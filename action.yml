@@ -1,4 +1,4 @@
-name: "kiwari"
+name: "kiwari - live GitHub activity"
 description: "Render the latest public GitHub activity (commits, PRs, issues, releases) into a README section - list or table view."
 author: "itokun99"
 branding:
