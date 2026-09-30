@@ -1,0 +1,64 @@
+name: "kiwari"
+description: "Render the latest public GitHub activity (commits, PRs, issues, releases) into a README section - list or table view."
+author: "itokun99"
+branding:
+  icon: "activity"
+  color: "green"
+
+inputs:
+  username:
+    description: "GitHub username whose activity is rendered. Defaults to the repository owner."
+    required: false
+    default: ""
+  view:
+    description: "Rendering style: list or table."
+    required: false
+    default: "list"
+  max_lines:
+    description: "Maximum number of activity lines/rows."
+    required: false
+    default: "10"
+  target_file:
+    description: "File that carries the activity marker section."
+    required: false
+    default: "README.md"
+  commit:
+    description: "Commit and push the rendered section (requires contents: write)."
+    required: false
+    default: "true"
+  commit_message:
+    description: "Commit message used when the rendered section changes."
+    required: false
+    default: "chore: refresh README activity"
+  token:
+    description: "Token used for GitHub API calls. Defaults to the workflow token."
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Render activity section
+      shell: bash
+      env:
+        KIWARI_USERNAME: ${{ inputs.username || github.repository_owner }}
+        KIWARI_VIEW: ${{ inputs.view }}
+        KIWARI_MAX_LINES: ${{ inputs.max_lines }}
+        KIWARI_TARGET_FILE: ${{ inputs.target_file }}
+        KIWARI_TOKEN: ${{ inputs.token || github.token }}
+      run: node "$GITHUB_ACTION_PATH/src/render-activity.mjs"
+
+    - name: Commit changes
+      if: ${{ inputs.commit == 'true' }}
+      shell: bash
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        if git diff --quiet -- "${{ inputs.target_file }}"; then
+          echo "No changes."
+          exit 0
+        fi
+        git add "${{ inputs.target_file }}"
+        git commit -m "${{ inputs.commit_message }}"
+        git pull --rebase --quiet origin "${GITHUB_REF_NAME}"
+        git push

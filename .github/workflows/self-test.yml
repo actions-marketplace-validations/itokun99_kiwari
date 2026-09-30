@@ -1,0 +1,45 @@
+name: self-test
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create fixture README with markers
+        run: printf '# fixture\n\n<!--START_SECTION:activity-->\n<!--END_SECTION:activity-->\n' > fixture-readme.md
+
+      - name: Render (list view)
+        uses: ./
+        with:
+          username: itokun99
+          view: list
+          max_lines: "3"
+          target_file: fixture-readme.md
+          commit: "false"
+
+      - name: Assert list view rendered
+        run: |
+          sed -n '/START_SECTION:activity/,/END_SECTION:activity/p' fixture-readme.md
+          grep -qE '^- ' fixture-readme.md
+
+      - name: Render (table view)
+        uses: ./
+        with:
+          username: itokun99
+          view: table
+          max_lines: "3"
+          target_file: fixture-readme.md
+          commit: "false"
+
+      - name: Assert table view rendered
+        run: |
+          sed -n '/START_SECTION:activity/,/END_SECTION:activity/p' fixture-readme.md
+          grep -q '| When | Activity |' fixture-readme.md
+          grep -qE 'Pushed|Released|Opened|Merged|Commented' fixture-readme.md
