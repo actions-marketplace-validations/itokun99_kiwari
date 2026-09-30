@@ -10,21 +10,23 @@ Commits, pull requests, issues, releases, and comments — the newest public eve
 
 ### `view: list` (default)
 
-```md
-- 📝 Pushed 2 commits to [acme/demo](https://github.com/acme/demo) (`main`) — "feat: add cache layer" · _2 hours ago_
-- 🔀 Merged PR [#7](https://github.com/acme/demo/pull/7) "Add cache layer" in [acme/demo](https://github.com/acme/demo) · _1 day ago_
-- 🚀 Released [v0.2.0](https://github.com/acme/demo/releases/tag/v0.2.0) in [acme/demo](https://github.com/acme/demo) · _3 days ago_
-```
+_Example output — newest events first, with relative times:_
+
+- 🚀 Released [v1](https://github.com/itokun99/kiwari/releases/tag/v1) in [itokun99/kiwari](https://github.com/itokun99/kiwari) · _1 hour ago_
+- 📝 Pushed 1 commit to [itokun99/kiwari](https://github.com/itokun99/kiwari) (`main`) — "test: exercise default username and token fallbacks in self-test" · _1 hour ago_
+- 📝 Pushed 2 commits to [itokun99/blogger-go](https://github.com/itokun99/blogger-go) (`main`) — "docs: add MIT license and contributing guide" · _1 day ago_
+- 🚀 Released [v0.1.0](https://github.com/itokun99/blogger-mcp/releases/tag/v0.1.0) in [itokun99/blogger-mcp](https://github.com/itokun99/blogger-mcp) · _1 day ago_
 
 ### `view: table`
 
-```md
+_Example output — the same events as a table, for narrower layouts:_
+
 | When | Activity |
 | --- | --- |
-| 2 hours ago | 📝 Pushed 2 commits to [acme/demo](https://github.com/acme/demo) — "feat: add cache layer" |
-| 1 day ago | 🔀 Merged PR [#7](https://github.com/acme/demo/pull/7) "Add cache layer" in [acme/demo](https://github.com/acme/demo) |
-| 3 days ago | 🚀 Released [v0.2.0](https://github.com/acme/demo/releases/tag/v0.2.0) in [acme/demo](https://github.com/acme/demo) |
-```
+| 1 hour ago | 🚀 Released [v1](https://github.com/itokun99/kiwari/releases/tag/v1) in [itokun99/kiwari](https://github.com/itokun99/kiwari) |
+| 1 hour ago | 📝 Pushed 1 commit to [itokun99/kiwari](https://github.com/itokun99/kiwari) — "test: exercise default username and token fallbacks in self-test" |
+| 1 day ago | 📝 Pushed 2 commits to [itokun99/blogger-go](https://github.com/itokun99/blogger-go) — "docs: add MIT license and contributing guide" |
+| 1 day ago | 🚀 Released [v0.1.0](https://github.com/itokun99/blogger-mcp/releases/tag/v0.1.0) in [itokun99/blogger-mcp](https://github.com/itokun99/blogger-mcp) |
 
 ## Quick start
 
