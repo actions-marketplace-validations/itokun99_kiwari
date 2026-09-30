@@ -5,6 +5,7 @@
 Commits, pull requests, issues, releases, and comments — the newest public events, refreshed on your own schedule. Extracted from the automation that keeps [@itokun99's profile README](https://github.com/itokun99) alive.
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+[![Marketplace](https://img.shields.io/badge/GitHub%20Marketplace-kiwari-2ea44f?logo=github)](https://github.com/marketplace/actions/kiwari-live-github-activity)
 
 ## Preview
 
@@ -12,7 +13,7 @@ Commits, pull requests, issues, releases, and comments — the newest public eve
 
 _Example output — newest events first, with relative times:_
 
-- 🚀 Released [v1](https://github.com/itokun99/kiwari/releases/tag/v1) in [itokun99/kiwari](https://github.com/itokun99/kiwari) · _1 hour ago_
+- 🚀 Released [v1.0.0](https://github.com/itokun99/kiwari/releases/tag/v1.0.0) in [itokun99/kiwari](https://github.com/itokun99/kiwari) · _1 hour ago_
 - 📝 Pushed 1 commit to [itokun99/kiwari](https://github.com/itokun99/kiwari) (`main`) — "test: exercise default username and token fallbacks in self-test" · _1 hour ago_
 - 📝 Pushed 2 commits to [itokun99/blogger-go](https://github.com/itokun99/blogger-go) (`main`) — "docs: add MIT license and contributing guide" · _1 day ago_
 - 🚀 Released [v0.1.0](https://github.com/itokun99/blogger-mcp/releases/tag/v0.1.0) in [itokun99/blogger-mcp](https://github.com/itokun99/blogger-mcp) · _1 day ago_
@@ -23,7 +24,7 @@ _Example output — the same events as a table, for narrower layouts:_
 
 | When | Activity |
 | --- | --- |
-| 1 hour ago | 🚀 Released [v1](https://github.com/itokun99/kiwari/releases/tag/v1) in [itokun99/kiwari](https://github.com/itokun99/kiwari) |
+| 1 hour ago | 🚀 Released [v1.0.0](https://github.com/itokun99/kiwari/releases/tag/v1.0.0) in [itokun99/kiwari](https://github.com/itokun99/kiwari) |
 | 1 hour ago | 📝 Pushed 1 commit to [itokun99/kiwari](https://github.com/itokun99/kiwari) — "test: exercise default username and token fallbacks in self-test" |
 | 1 day ago | 📝 Pushed 2 commits to [itokun99/blogger-go](https://github.com/itokun99/blogger-go) — "docs: add MIT license and contributing guide" |
 | 1 day ago | 🚀 Released [v0.1.0](https://github.com/itokun99/blogger-mcp/releases/tag/v0.1.0) in [itokun99/blogger-mcp](https://github.com/itokun99/blogger-mcp) |
