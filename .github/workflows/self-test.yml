@@ -43,3 +43,14 @@ jobs:
           sed -n '/START_SECTION:activity/,/END_SECTION:activity/p' fixture-readme.md
           grep -q '| When | Activity |' fixture-readme.md
           grep -qE 'Pushed|Released|Opened|Merged|Commented' fixture-readme.md
+
+      - name: Render with defaults (repo owner, workflow token)
+        uses: ./
+        with:
+          view: list
+          max_lines: "2"
+          target_file: fixture-readme.md
+          commit: "false"
+
+      - name: Assert defaults rendered
+        run: grep -qE '^- ' fixture-readme.md
