@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Create fixture README with markers
-        run: printf '# fixture\n\n<!--START_SECTION:activity-->\n<!--END_SECTION:activity-->\n' > fixture-readme.md
+        run: printf '# fixture\n\n<!--START_SECTION:activity-->\n<!--END_SECTION:activity-->\n\n<!--START_SECTION:weekly-->\n<!--END_SECTION:weekly-->\n' > fixture-readme.md
 
       - name: Render (list view)
         uses: ./
@@ -54,3 +54,21 @@ jobs:
 
       - name: Assert defaults rendered
         run: grep -qE '^- ' fixture-readme.md
+
+      - name: Render (weekly section, both sections together)
+        uses: ./
+        with:
+          username: itokun99
+          sections: activity,weekly
+          weekly_days: "7"
+          max_weekly: "3"
+          exclude_repos: itokun99/itokun99
+          target_file: fixture-readme.md
+          commit: "false"
+
+      - name: Assert weekly section rendered
+        run: |
+          weekly=$(sed -n '/START_SECTION:weekly/,/END_SECTION:weekly/p' fixture-readme.md)
+          echo "$weekly"
+          echo "$weekly" | grep -qE '^[1-9]+\. \[\*\*'
+          ! echo "$weekly" | grep -q 'itokun99/itokun99'

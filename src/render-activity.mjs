@@ -6,15 +6,22 @@
  *   KIWARI_USERNAME     GitHub username (required)
  *   KIWARI_VIEW         "list" (default) or "table"
  *   KIWARI_MAX_LINES    maximum number of activity lines/rows (default 10)
+ *   KIWARI_SECTIONS     comma-separated sections to render: activity, weekly (default activity)
+ *   KIWARI_WEEKLY_DAYS  window in days for the weekly section (default 7)
+ *   KIWARI_MAX_WEEKLY   maximum number of repositories in the weekly section (default 10)
+ *   KIWARI_EXCLUDE_REPOS  comma-separated full repository names excluded from the weekly section
  *   KIWARI_TARGET_FILE  file that carries the marker section (default README.md)
  *   KIWARI_TOKEN        token for GitHub API calls (falls back to GITHUB_TOKEN)
  *
- * The target file must contain:
- *   <!--START_SECTION:activity-->
- *   <!--END_SECTION:activity-->
+ * The target file must contain a marker block for every enabled section:
+ *   <!--START_SECTION:activity--> ... <!--END_SECTION:activity-->
+ *   <!--START_SECTION:weekly--> ... <!--END_SECTION:weekly-->
  *
- * Only public repositories are rendered - events from private repos are skipped,
- * so private work never leaks into a public README.
+ * The activity section renders the user's newest public events. The weekly section
+ * ranks the user's own public repositories by commit / PR / issue / release counts
+ * in the weekly window: PR/issue/release counts come from the user's events, commit
+ * counts come from each repo's commits API (the public events API omits push sizes).
+ * Events from private repositories are never rendered.
  */
 
 import { readFile, writeFile } from "node:fs/promises";
@@ -25,6 +32,18 @@ const VIEW = (process.env.KIWARI_VIEW || "list").toLowerCase() === "table" ? "ta
 const MAX_LINES = Math.max(1, Number.parseInt(process.env.KIWARI_MAX_LINES || "10", 10) || 10);
 const TARGET_FILE = process.env.KIWARI_TARGET_FILE || "README.md";
 const TOKEN = process.env.KIWARI_TOKEN || process.env.GITHUB_TOKEN || "";
+const SECTIONS = (process.env.KIWARI_SECTIONS || "activity")
+  .split(",")
+  .map((section) => section.trim().toLowerCase())
+  .filter(Boolean);
+const WEEKLY_DAYS = Math.max(1, Number.parseInt(process.env.KIWARI_WEEKLY_DAYS || "7", 10) || 7);
+const MAX_WEEKLY = Math.max(1, Number.parseInt(process.env.KIWARI_MAX_WEEKLY || "10", 10) || 10);
+const EXCLUDE_REPOS = new Set(
+  (process.env.KIWARI_EXCLUDE_REPOS || "")
+    .split(",")
+    .map((repo) => repo.trim().toLowerCase())
+    .filter(Boolean),
+);
 const MAX_CANDIDATES = Math.max(30, MAX_LINES * 3);
 const ACTIVITY_TYPES = new Set([
   "PushEvent",
@@ -34,6 +53,8 @@ const ACTIVITY_TYPES = new Set([
   "IssueCommentEvent",
   "DiscussionEvent",
 ]);
+// Weekly ranking only - push, PR, issue, and release events are what the counters need.
+const WEEKLY_EVENT_TYPES = new Set(["PushEvent", "PullRequestEvent", "IssuesEvent", "ReleaseEvent"]);
 
 const HEADERS = {
   accept: "application/vnd.github+json",
@@ -55,6 +76,7 @@ const truncate = (text, max) => {
   const t = oneLine(text);
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
 };
+const plural = (count, word) => `${count} ${word}${count > 1 ? "s" : ""}`;
 
 export function timeAgo(iso, now = Date.now()) {
   const seconds = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000));
@@ -180,8 +202,19 @@ export function renderActivity(entries, view = "list", maxLines = 10, now = Date
   return picked.map((entry) => `- ${entryText(entry)} · _${timeAgo(entry.date, now)}_`).join("\n");
 }
 
-async function fetchEntries(username) {
-  const events = await api(`/users/${username}/events?per_page=100`);
+async function fetchEvents(username) {
+  // Up to 3 pages (~300 events) when the weekly section is enabled, so its 7-day
+  // window is covered even for active users; 1 page is plenty for activity alone.
+  const pages = SECTIONS.includes("weekly") ? 3 : 1;
+  const results = await Promise.all(
+    Array.from({ length: pages }, (_, index) =>
+      api(`/users/${username}/events?per_page=100&page=${index + 1}`).catch(() => []),
+    ),
+  );
+  return results.flat();
+}
+
+async function buildEntries(events) {
   const candidates = [];
   for (const event of events) {
     if (!ACTIVITY_TYPES.has(event.type)) continue;
@@ -193,6 +226,77 @@ async function fetchEntries(username) {
   return candidates;
 }
 
+export function weeklyStats(events, username, cutoffIso, excluded = new Set()) {
+  const counters = {}; // full repo name -> { prs, issues, releases }
+  const candidates = new Set(); // own-repo names with any weekly event
+  const owner = username.toLowerCase();
+  for (const event of events) {
+    if (!WEEKLY_EVENT_TYPES.has(event.type)) continue;
+    if (event.created_at < cutoffIso) continue; // ISO strings compare lexically in UTC
+    const full = event.repo.name;
+    if (full.split("/")[0].toLowerCase() !== owner) continue; // rank own repos only
+    if (excluded.has(full.toLowerCase())) continue; // user-curated exclusion
+    const payload = event.payload || {};
+    const counter =
+      event.type === "PullRequestEvent" && payload.action === "opened" ? "prs"
+      : event.type === "IssuesEvent" && payload.action === "opened" ? "issues"
+      : event.type === "ReleaseEvent" ? "releases"
+      : null;
+    if (counter) {
+      const stats = (counters[full] ||= { prs: 0, issues: 0, releases: 0 });
+      stats[counter] += 1;
+    }
+    candidates.add(full);
+  }
+  return { candidates: [...candidates], counters };
+}
+
+export function rankWeekly(candidates, counters, commitCounts, { max = 10, days = 7 } = {}) {
+  const rows = [];
+  for (const full of candidates) {
+    const stats = counters[full] || { prs: 0, issues: 0, releases: 0 };
+    const commits = commitCounts.get(full) ?? 0;
+    const counts = [
+      commits > 0 ? `📝 ${commits >= 100 ? "100+ commits" : plural(commits, "commit")}` : "",
+      stats.prs ? `🔀 ${plural(stats.prs, "PR")}` : "",
+      stats.issues ? `🐛 ${plural(stats.issues, "issue")}` : "",
+      stats.releases ? `🚀 ${plural(stats.releases, "release")}` : "",
+    ].filter(Boolean);
+    if (!counts.length) continue;
+    rows.push({
+      full,
+      score: commits + stats.prs + stats.issues + stats.releases,
+      text: `[**${full.split("/")[1]}**](https://github.com/${full}) — ${counts.join(" · ")}`,
+    });
+  }
+  const lines = rows
+    .sort((a, b) => b.score - a.score || a.full.localeCompare(b.full))
+    .slice(0, max)
+    .map((row, index) => `${index + 1}. ${row.text}`);
+  return lines.length ? lines.join("\n") : `_No public activity in the last ${days} days._`;
+}
+
+async function buildWeeklyBody(events, username) {
+  const cutoffIso = new Date(Date.now() - WEEKLY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const { candidates, counters } = weeklyStats(events, username, cutoffIso, EXCLUDE_REPOS);
+  const commitCounts = new Map();
+  const eligible = [];
+  for (const full of candidates) {
+    if (!(await isPublicRepo(full))) continue; // private work never leaks into a public README
+    let commits = 0;
+    try {
+      // Default branch, capped at one page: a 100+ commit week renders as "100+".
+      const list = await api(`/repos/${full}/commits?since=${encodeURIComponent(cutoffIso)}&per_page=100`);
+      commits = list.length;
+    } catch {
+      // commit fetch failed (rate limit): the row still shows the event-based counts
+    }
+    commitCounts.set(full, commits);
+    eligible.push(full);
+  }
+  return rankWeekly(eligible, counters, commitCounts, { max: MAX_WEEKLY, days: WEEKLY_DAYS });
+}
+
 export function replaceSection(markdown, name, body) {
   const block = new RegExp(`<!--START_SECTION:${name}-->[\\s\\S]*?<!--END_SECTION:${name}-->`);
   if (!block.test(markdown)) throw new Error(`marker "${name}" not found in the target file`);
@@ -202,14 +306,21 @@ export function replaceSection(markdown, name, body) {
 async function main() {
   if (!USERNAME) throw new Error("KIWARI_USERNAME is required");
   const target = await readFile(TARGET_FILE, "utf8");
-  const entries = await fetchEntries(USERNAME);
-  const updated = replaceSection(target, "activity", renderActivity(entries, VIEW, MAX_LINES));
+  const events = await fetchEvents(USERNAME);
+  const bodies = {};
+  if (SECTIONS.includes("activity")) bodies.activity = renderActivity(await buildEntries(events), VIEW, MAX_LINES);
+  if (SECTIONS.includes("weekly")) bodies.weekly = await buildWeeklyBody(events, USERNAME);
+  let updated = target;
+  for (const section of SECTIONS) {
+    if (!(section in bodies)) throw new Error(`unknown section "${section}" (supported: activity, weekly)`);
+    updated = replaceSection(updated, section, bodies[section]);
+  }
   if (updated === target) {
     console.log(`kiwari: ${TARGET_FILE} is already up to date.`);
     return;
   }
   await writeFile(TARGET_FILE, updated);
-  console.log(`kiwari: updated ${TARGET_FILE} (${VIEW} view).`);
+  console.log(`kiwari: updated ${TARGET_FILE} (${SECTIONS.join(", ")} section${SECTIONS.length > 1 ? "s" : ""}).`);
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
