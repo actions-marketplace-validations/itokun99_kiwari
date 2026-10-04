@@ -18,6 +18,22 @@ inputs:
     description: "Maximum number of activity lines/rows."
     required: false
     default: "10"
+  sections:
+    description: "Comma-separated sections to render: activity, weekly."
+    required: false
+    default: "activity"
+  weekly_days:
+    description: "Window in days for the weekly section (default 7)."
+    required: false
+    default: "7"
+  max_weekly:
+    description: "Maximum number of repositories in the weekly section (default 10)."
+    required: false
+    default: "10"
+  exclude_repos:
+    description: "Comma-separated full repository names excluded from the weekly section (e.g. owner/profile, owner/dotfiles)."
+    required: false
+    default: ""
   target_file:
     description: "File that carries the activity marker section."
     required: false
@@ -44,6 +60,10 @@ runs:
         KIWARI_USERNAME: ${{ inputs.username || github.repository_owner }}
         KIWARI_VIEW: ${{ inputs.view }}
         KIWARI_MAX_LINES: ${{ inputs.max_lines }}
+        KIWARI_SECTIONS: ${{ inputs.sections }}
+        KIWARI_WEEKLY_DAYS: ${{ inputs.weekly_days }}
+        KIWARI_MAX_WEEKLY: ${{ inputs.max_weekly }}
+        KIWARI_EXCLUDE_REPOS: ${{ inputs.exclude_repos }}
         KIWARI_TARGET_FILE: ${{ inputs.target_file }}
         KIWARI_TOKEN: ${{ inputs.token || github.token }}
       run: node "$GITHUB_ACTION_PATH/src/render-activity.mjs"

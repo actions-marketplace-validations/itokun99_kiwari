@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { entryText, mergeEntries, renderActivity, replaceSection, timeAgo } from "../src/render-activity.mjs";
+import { entryText, mergeEntries, rankWeekly, renderActivity, replaceSection, timeAgo, weeklyStats } from "../src/render-activity.mjs";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 const push = (repo, count, message, date) => ({ kind: "push", repo, ref: "main", count, message, date });
@@ -70,4 +70,69 @@ test("replaceSection swaps only the marker block", () => {
   const out = replaceSection(md, "activity", "new");
   assert.equal(out, "before\n<!--START_SECTION:activity-->\nnew\n<!--END_SECTION:activity-->\nafter\n");
   assert.throws(() => replaceSection("no markers", "activity", "x"), /marker "activity" not found/);
+});
+
+const WEEK_CUTOFF = "2026-09-23T00:00:00Z"; // 7 days before NOW
+const event = (type, repo, created, payload = {}) => ({ type, repo: { name: repo }, created_at: created, payload });
+
+test("weeklyStats counts opened PR/issues and releases, ranks own repos, respects the cutoff", () => {
+  const events = [
+    event("PushEvent", "acme/demo", "2026-09-29T08:00:00Z", { ref: "refs/heads/main" }),
+    event("PullRequestEvent", "acme/demo", "2026-09-29T09:00:00Z", { action: "opened", number: 7 }),
+    event("PullRequestEvent", "acme/demo", "2026-09-29T09:05:00Z", { action: "closed", number: 7 }),
+    event("IssuesEvent", "acme/demo", "2026-09-29T10:00:00Z", { action: "opened", issue: { number: 3 } }),
+    event("IssuesEvent", "acme/demo", "2026-09-29T11:00:00Z", { action: "closed", issue: { number: 4 } }),
+    event("ReleaseEvent", "acme/demo", "2026-09-29T12:00:00Z", { release: { tag_name: "v1" } }),
+    event("PullRequestEvent", "acme/old", "2026-09-01T09:00:00Z", { action: "opened", number: 1 }),
+    event("PullRequestEvent", "other/repo", "2026-09-29T09:00:00Z", { action: "opened", number: 1 }),
+  ];
+  const { candidates, counters } = weeklyStats(events, "acme", WEEK_CUTOFF);
+  assert.deepEqual(candidates, ["acme/demo"]);
+  assert.deepEqual(counters["acme/demo"], { prs: 1, issues: 1, releases: 1 });
+});
+
+test("rankWeekly sorts by activity, caps at max, and formats rows", () => {
+  const counters = {
+    "acme/a": { prs: 0, issues: 0, releases: 0 },
+    "acme/b": { prs: 2, issues: 1, releases: 0 },
+    "acme/c": { prs: 0, issues: 0, releases: 1 },
+  };
+  const commitCounts = new Map([
+    ["acme/a", 5],
+    ["acme/b", 0],
+    ["acme/c", 0],
+  ]);
+  const out = rankWeekly(["acme/a", "acme/b", "acme/c"], counters, commitCounts, { max: 10, days: 7 });
+  const lines = out.split("\n");
+  assert.equal(lines.length, 3);
+  assert.equal(lines[0], '1. [**a**](https://github.com/acme/a) — 📝 5 commits');
+  assert.equal(lines[1], '2. [**b**](https://github.com/acme/b) — 🔀 2 PRs · 🐛 1 issue');
+  assert.equal(lines[2], '3. [**c**](https://github.com/acme/c) — 🚀 1 release');
+});
+
+test("rankWeekly caps rows and renders 100+ commit weeks without a count", () => {
+  const counters = { "acme/x": { prs: 0, issues: 0, releases: 0 } };
+  const commitCounts = new Map([
+    ["acme/x", 150],
+    ["acme/y", 0],
+  ]);
+  const out = rankWeekly(["acme/x", "acme/y"], counters, commitCounts, { max: 1, days: 7 });
+  assert.equal(out, '1. [**x**](https://github.com/acme/x) — 📝 100+ commits');
+});
+
+test("rankWeekly falls back when nothing counts", () => {
+  assert.equal(
+    rankWeekly([], {}, new Map(), { max: 10, days: 7 }),
+    "_No public activity in the last 7 days._",
+  );
+});
+
+test("weeklyStats honors an excluded repository list", () => {
+  const events = [
+    event("PushEvent", "acme/demo", "2026-09-29T08:00:00Z", { ref: "refs/heads/main" }),
+    event("PushEvent", "acme/dotfiles", "2026-09-29T08:00:00Z", { ref: "refs/heads/main" }),
+  ];
+  const { candidates, counters } = weeklyStats(events, "acme", WEEK_CUTOFF, new Set(["acme/dotfiles"]));
+  assert.deepEqual(candidates, ["acme/demo"]);
+  assert.equal(counters["acme/dotfiles"], undefined);
 });
