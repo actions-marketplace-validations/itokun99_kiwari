@@ -105,6 +105,7 @@ The action renders the section and pushes a commit when it changes.
 - **Public activity only.** Events from private repositories are never rendered.
 - **Own repositories only** in the weekly section: cross-repo contributions (PRs to other projects) do not rank.
 - Weekly commit counts come from each repository's commits API for the window (default branch, rendered as "100+" past the cap).
+- PR titles are fetched per rendered PR line (the events API trims them out of payloads), so a run makes a few extra calls; a failed fetch renders the line without the title.
 - **Relative times** ("2 hours ago") are recomputed on every run, so the section also commits while a label ages.
 - The workflow needs `permissions: contents: write` (only when `commit: true`).
 - GitHub disables scheduled workflows after 60 days without repository activity — an occasional push keeps the schedule alive.
