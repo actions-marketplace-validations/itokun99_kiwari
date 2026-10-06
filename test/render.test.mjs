@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { entryText, mergeEntries, rankWeekly, renderActivity, replaceSection, timeAgo, weeklyStats } from "../src/render-activity.mjs";
+import { enrichTitles, entryText, mergeEntries, rankWeekly, renderActivity, replaceSection, timeAgo, toEntry, weeklyStats } from "../src/render-activity.mjs";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 const push = (repo, count, message, date) => ({ kind: "push", repo, ref: "main", count, message, date });
@@ -36,6 +36,68 @@ test("mergeEntries collapses adjacent pushes to the same repo", () => {
   assert.equal(merged[0].count, 5);
   assert.equal(merged[0].message, "newer");
   assert.equal(merged[2].count, 1);
+});
+
+const prEvent = (payload, date = "2026-09-29T10:00:00Z") => ({
+  type: "PullRequestEvent",
+  repo: { name: "acme/demo" },
+  created_at: date,
+  payload,
+});
+
+test("toEntry rebuilds PR lines from identifiers when the payload is trimmed", async () => {
+  const entry = await toEntry(
+    prEvent({ action: "opened", number: 7, pull_request: { url: "https://api.github.com/repos/acme/demo/pulls/7", number: 7 } }),
+  );
+  assert.equal(
+    entry.text,
+    "🔀 Opened PR [#7](https://github.com/acme/demo/pull/7) in [acme/demo](https://github.com/acme/demo)",
+  );
+  assert.deepEqual(entry.needsTitle, {
+    verb: "Opened",
+    full: "acme/demo",
+    number: 7,
+    url: "https://github.com/acme/demo/pull/7",
+  });
+});
+
+test("toEntry renders merged actions and keeps untrimmed titles", async () => {
+  const merged = await toEntry(
+    prEvent({ action: "merged", number: 7, pull_request: { title: "feat: x", html_url: "https://github.com/acme/demo/pull/7", merged: true } }),
+  );
+  assert.equal(
+    merged.text,
+    '🔀 Merged PR [#7](https://github.com/acme/demo/pull/7) "feat: x" in [acme/demo](https://github.com/acme/demo)',
+  );
+  assert.equal(merged.needsTitle, undefined);
+  const closed = await toEntry(
+    prEvent({ action: "closed", number: 8, pull_request: { title: "feat: y", html_url: "https://github.com/acme/demo/pull/8", merged: false } }),
+  );
+  assert.match(closed.text, /🔀 Closed PR \[#8\]/);
+});
+
+test("enrichTitles fills missing titles and keeps the fallback when the fetch fails", async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    if (String(url).includes("/pulls/9")) return new Response("nope", { status: 404 });
+    return new Response(JSON.stringify({ title: "real title", html_url: "https://github.com/acme/demo/pull/7" }), { status: 200 });
+  };
+  try {
+    const entries = [
+      { kind: "line", text: "fallback 7", date: "2026-09-29T10:00:00Z", needsTitle: { verb: "Opened", full: "acme/demo", number: 7, url: "https://github.com/acme/demo/pull/7" } },
+      { kind: "line", text: "fallback 9", date: "2026-09-29T10:00:00Z", needsTitle: { verb: "Opened", full: "acme/demo", number: 9, url: "https://github.com/acme/demo/pull/9" } },
+      { kind: "push", repo: "acme/demo", ref: "main", count: 1, message: "", date: "2026-09-29T10:00:00Z" },
+    ];
+    await enrichTitles(entries);
+    assert.equal(entries[0].text, '🔀 Opened PR [#7](https://github.com/acme/demo/pull/7) "real title" in [acme/demo](https://github.com/acme/demo)');
+    assert.equal(entries[1].text, "fallback 9");
+    assert.equal(entries[0].needsTitle, undefined);
+    assert.equal(calls.length, 2);
+  } finally {
+    globalThis.fetch = original;
+  }
 });
 
 test("renderActivity list view", () => {

@@ -95,6 +95,10 @@ export function timeAgo(iso, now = Date.now()) {
 
 const isZeroSha = (sha) => !sha || /^0+$/.test(sha);
 const repoLink = (full) => `[${full}](https://github.com/${full})`;
+// The events API trims PR payloads to identifiers only (2025-08 changelog), so the
+// line is built from repo + number and the title arrives later via enrichTitles().
+const prLine = (verb, full, number, url, title) =>
+  `🔀 ${verb} PR [#${number}](${url})${title ? ` "${truncate(title, 60)}"` : ""} in ${repoLink(full)}`;
 
 const publicRepoCache = new Map();
 async function isPublicRepo(full) {
@@ -124,7 +128,7 @@ async function pushCommitInfo(full, payload) {
   }
 }
 
-async function toEntry(event) {
+export async function toEntry(event) {
   const full = event.repo.name;
   const date = event.created_at;
   const payload = event.payload || {};
@@ -136,13 +140,19 @@ async function toEntry(event) {
     }
     case "PullRequestEvent": {
       const pr = payload.pull_request || {};
+      const number = payload.number ?? pr.number;
       const verb =
         payload.action === "opened" ? "Opened"
         : payload.action === "reopened" ? "Reopened"
+        : payload.action === "merged" ? "Merged" // emitted since the payload trim
         : payload.action === "closed" ? (pr.merged ? "Merged" : "Closed")
         : null;
       if (!verb) return null;
-      return { kind: "line", date, text: `🔀 ${verb} PR [#${payload.number}](${pr.html_url}) "${truncate(pr.title, 60)}" in ${repoLink(full)}` };
+      const url = pr.html_url || `https://github.com/${full}/pull/${number}`;
+      const title = pr.title || "";
+      const entry = { kind: "line", date, text: prLine(verb, full, number, url, title) };
+      if (!title) entry.needsTitle = { verb, full, number, url }; // filled by enrichTitles()
+      return entry;
     }
     case "IssuesEvent": {
       const verb = { opened: "Opened", closed: "Closed", reopened: "Reopened" }[payload.action];
@@ -167,6 +177,25 @@ async function toEntry(event) {
     default:
       return null;
   }
+}
+
+// PR titles are no longer part of the trimmed events payload: fetch them for the
+// entries that actually render (a few calls per run). A failed fetch keeps the
+// title-less fallback line instead of breaking the section.
+export async function enrichTitles(entries) {
+  const pending = entries.filter((entry) => entry.needsTitle);
+  await Promise.all(
+    pending.map(async (entry) => {
+      const { verb, full, number, url } = entry.needsTitle;
+      delete entry.needsTitle;
+      try {
+        const pr = await api(`/repos/${full}/pulls/${number}`);
+        if (pr.title) entry.text = prLine(verb, full, number, pr.html_url || url, pr.title);
+      } catch {
+        // deleted PR / rate limit: keep the fallback line
+      }
+    }),
+  );
 }
 
 export function entryText(entry) {
@@ -308,7 +337,12 @@ async function main() {
   const target = await readFile(TARGET_FILE, "utf8");
   const events = await fetchEvents(USERNAME);
   const bodies = {};
-  if (SECTIONS.includes("activity")) bodies.activity = renderActivity(await buildEntries(events), VIEW, MAX_LINES);
+  if (SECTIONS.includes("activity")) {
+    // Merge and slice first so only the PR lines that actually render pay a title fetch.
+    const entries = mergeEntries(await buildEntries(events)).slice(0, MAX_LINES);
+    await enrichTitles(entries);
+    bodies.activity = renderActivity(entries, VIEW, MAX_LINES);
+  }
   if (SECTIONS.includes("weekly")) bodies.weekly = await buildWeeklyBody(events, USERNAME);
   let updated = target;
   for (const section of SECTIONS) {
